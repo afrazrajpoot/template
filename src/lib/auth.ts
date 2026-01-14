@@ -167,19 +167,42 @@ export const authOptions: NextAuthOptions = {
       return true
     },
 
+    // ✅ FIXED: Handle both absolute and relative URLs
     async redirect({ url, baseUrl }) {
       console.log('[AUTH] Redirect callback:', { url, baseUrl })
 
-      // If signing in from a protected page
-      if (url.includes('/auth/signin')) {
-        const callbackUrl = new URL(url).searchParams.get('callbackUrl')
-        if (callbackUrl) {
-          return `${baseUrl}${callbackUrl}`
+      // Handle relative URLs
+      if (url.startsWith('/')) {
+        // Check if it's a signin page with callbackUrl parameter
+        if (url.includes('/auth/signin')) {
+          try {
+            // Parse the URL properly
+            let callbackUrl = ''
+            if (url.includes('?')) {
+              const params = new URLSearchParams(url.split('?')[1])
+              callbackUrl = params.get('callbackUrl') || ''
+            }
+
+            if (callbackUrl) {
+              // Ensure callbackUrl is properly formatted
+              return `${baseUrl}${callbackUrl.startsWith('/') ? callbackUrl : '/' + callbackUrl}`
+            }
+          } catch (error) {
+            console.error('[AUTH] Error parsing callbackUrl:', error)
+          }
         }
+
+        // Default: prepend baseUrl to relative URL
+        return `${baseUrl}${url}`
       }
 
-      // Default to home (middleware will redirect to dashboard)
-      return `${baseUrl}/`
+      // Handle absolute URLs
+      else if (url.startsWith('http')) {
+        return url
+      }
+
+      // Default fallback
+      return baseUrl
     }
   },
 
@@ -195,6 +218,15 @@ export const authOptions: NextAuthOptions = {
   cookies: {
     sessionToken: {
       name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production'
+      }
+    },
+    callbackUrl: {
+      name: `next-auth.callback-url`,
       options: {
         httpOnly: true,
         sameSite: 'lax',
